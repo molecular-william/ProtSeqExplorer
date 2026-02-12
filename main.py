@@ -191,24 +191,38 @@ class ProtSeqExplorer(QMainWindow):
             combinations = list(product(selected_embs, selected_dim_reds))
             n_combinations = len(combinations)
 
-            cols = 3
+            cols = min(4, n_combinations)
             rows = math.ceil(n_combinations / cols)
-            
-            axes = self.figure.subplots(rows, cols)
-            axes = axes.flatten()
-            for i, (emb_name, dim_red_name) in enumerate(combinations):
-                embeddings = np.array(list(map(embs_mapping[emb_name], self.sequences)))   # everytime need calculate the embedding again, maybe need to think of a way to cache
-                reduced = dim_red_mapping[dim_red_name].fit_transform(embeddings)
-                
-                axes[i].scatter(reduced[:, 0], reduced[:, 1], color='blue', alpha=0.5, s=30)
-                axes[i].set_title(f'{emb_name} + {dim_red_name}')
-                axes[i].set_xlabel(f'{dim_red_name} 1')
-                axes[i].set_ylabel(f'{dim_red_name} 2')
-                axes[i].set_xticks([])
-                axes[i].set_yticks([])
 
-            for j in range(i + 1, len(axes)):
-                self.figure.delaxes(axes[j])
+
+            if n_combinations > 1:
+                axes = self.figure.subplots(rows, cols)
+                axes = axes.flatten()
+                for i, (emb_name, dim_red_name) in enumerate(combinations):
+                    embeddings = np.array(list(map(embs_mapping[emb_name], self.sequences)))   # everytime need calculate the embedding again, maybe need to think of a way to cache
+                    reduced = dim_red_mapping[dim_red_name].fit_transform(embeddings)
+                    
+                    axes[i].scatter(reduced[:, 0], reduced[:, 1], color='blue', alpha=0.5, s=30)
+                    axes[i].set_title(f'{emb_name} + {dim_red_name}')
+                    axes[i].set_xlabel(f'{dim_red_name} 1')
+                    axes[i].set_ylabel(f'{dim_red_name} 2')
+                    axes[i].set_xticks([])
+                    axes[i].set_yticks([])
+    
+                for j in range(i + 1, len(axes)):
+                    self.figure.delaxes(axes[j])
+
+            else:
+                axes = self.figure.subplots()
+                embeddings = np.array(list(map(embs_mapping[selected_embs[0]], self.sequences)))   # everytime need calculate the embedding again, maybe need to think of a way to cache
+                reduced = dim_red_mapping[selected_dim_reds[0]].fit_transform(embeddings)
+                
+                axes.scatter(reduced[:, 0], reduced[:, 1], color='blue', alpha=0.5, s=30)
+                axes.set_title(f'{selected_embs[0]} + {selected_dim_reds[0]}')
+                axes.set_xlabel(f'{selected_dim_reds[0]} 1')
+                axes.set_ylabel(f'{selected_dim_reds[0]} 2')
+                axes.set_xticks([])
+                axes.set_yticks([])
 
             self.canvas.draw()
             
