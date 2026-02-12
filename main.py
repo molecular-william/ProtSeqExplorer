@@ -26,7 +26,7 @@ class ProtSeqExplorer(QMainWindow):
         self.canvas = FigureCanvas(self.figure)
 
         self.emb_method_label = QLabel("Embedding Methods:")
-        self.emb_method_checkbox = MultiChoiceCheckBox(["EEV"])
+        self.emb_method_checkbox = MultiChoiceCheckBox(["EEV", 'ANV'])
         self.dim_red_method_label = QLabel("Dimensionality Reduction Methods:")
         self.dim_red_method_method_checkbox = MultiChoiceCheckBox(["PCA"])
 
@@ -95,6 +95,7 @@ class ProtSeqExplorer(QMainWindow):
         self.sequence_names = []
         self.sequences_valid = None
         self.eev = EnergyEntropy_1(data_type='protein')
+        self.anv = AANaturalVector()
         self.pca = PCA(n_components=2)
 
 
@@ -172,29 +173,40 @@ class ProtSeqExplorer(QMainWindow):
         selected_embs = self.emb_method_checkbox.get_selected_values()  # list
         selected_dim_reds = self.dim_red_method_method_checkbox.get_selected_values()  # list
         embs_mapping = {
-                    'EEV': lambda seq: self.eev.seq2vector(seq),
+            'EEV': lambda seq: self.eev.seq2vector(seq),
+            'ANV': lambda seq: self.anv.seq2vector(seq),
                 }
         dim_red_mapping = {
-                    'PCA': self.pca#.fit_transform(array),
+            'PCA': self.pca#.fit_transform(array),
                 }
         if selected_embs and selected_dim_reds:
             self.figure.clear()
             self.canvas.draw()
+            combinations = list(product(selected_embs, selected_dim_reds))
+            n_combinations = len(combinations)
+
+            Cols = 3
+            Rows = math.ceil(n_combinations / Cols)
             
-            if len(selected_embs) == 1 and len(selected_dim_reds) == 1:
-                embeddings = np.array(list(map(embs_mapping[selected_embs[0]], self.sequences)))
-                reduced = dim_red_mapping[selected_dim_reds[0]].fit_transform(embeddings)
+            axes = self.figure.subplots(Rows, Cols)
+            axes = axes.flatten()
+            for i, (emb_name, dim_red_name) in enumerate(combinations):
+                embeddings = np.array(list(map(embs_mapping[emb_name], self.sequences)))   # everytime need calculate the embedding again, maybe need to think of a way to cache
+                reduced = dim_red_mapping[dim_red_name].fit_transform(embeddings)
                 
-                self.figure.clear()
-                ax = self.figure.subplots()
-    
-                ax.scatter(reduced[:, 0], reduced[:, 1], color='blue', alpha=0.5, s=30)
-                ax.set_title(f'{selected_dim_reds[0]}')
-                ax.set_xlabel(f'{selected_dim_reds[0]} 1')
-                ax.set_ylabel(f'{selected_dim_reds[0]} 2')
-                ax.set_xticks([])
-                ax.set_yticks([])
-                self.canvas.draw()
+                axes[i].scatter(reduced[:, 0], reduced[:, 1], color='blue', alpha=0.5, s=30)
+                axes[i].set_title(f'{emb_name} + {dim_red_name}')
+                axes[i].set_xlabel(f'{dim_red_name} 1')
+                axes[i].set_ylabel(f'{dim_red_name} 2')
+                axes[i].set_xticks([])
+                axes[i].set_yticks([])
+
+            for j in range(i + 1, len(axes)):
+                self.figure.delaxes(axes[j])
+
+            self.canvas.draw()
+            
+        
 
         else:
             QMessageBox.warning(self, "Embed and Plot!", "No embedding or dimensionality reduction method selected.")
