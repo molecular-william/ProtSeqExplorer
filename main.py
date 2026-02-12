@@ -1,18 +1,3 @@
-from PyQt6.QtCore import Qt, QDate
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QCheckBox, QGridLayout, QLineEdit, QListWidget, QComboBox, QFileDialog, QTableWidget, QTableWidgetItem, QMessageBox, QDateEdit, QMainWindow, QTreeView, QHeaderView
-from PyQt6.QtGui import QFont, QPixmap, QStandardItemModel, QStandardItem
-from PyQt6.QtSql import QSqlDatabase, QSqlQuery
-import gc, os, sys, re
-from collections import defaultdict
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-
-import math
-from itertools import product
-from sklearnex.decomposition import PCA
-import numpy as np
-import umap
-
 class ProtSeqExplorer(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -43,7 +28,7 @@ class ProtSeqExplorer(QMainWindow):
         self.emb_method_label = QLabel("Embedding Methods:")
         self.emb_method_checkbox = MultiChoiceCheckBox(["EEV", 'ANV'])
         self.dim_red_method_label = QLabel("Dimensionality Reduction Methods:")
-        self.dim_red_method_method_checkbox = MultiChoiceCheckBox(["PCA", 'UMAP', "DensMAP"])
+        self.dim_red_method_method_checkbox = MultiChoiceCheckBox(["PCA", 'UMAP', "DensMAP", 'TSNE'])
 
         #self.emb_button = QPushButton("Embed!")
         #self.plot_buttonn = QPushButton("Plot!")
@@ -114,6 +99,7 @@ class ProtSeqExplorer(QMainWindow):
         self.pca = PCA(n_components=2)
         self.umap = umap.UMAP(n_components=2, n_jobs=-1, metric='euclidean')
         self.densmap = umap.UMAP(n_components=2, n_jobs=-1, metric='euclidean', densmap=True)
+        self.tsne = TSNE(n_components=2)
 
 
     def open_parse_fasta(self):
@@ -197,6 +183,7 @@ class ProtSeqExplorer(QMainWindow):
             'PCA': self.pca,#.fit_transform(array),
             'UMAP': self.umap,
             'DensMAP': self.densmap,
+            'TSNE': self.tsne
                 }
         if selected_embs and selected_dim_reds:
             self.figure.clear()
@@ -204,10 +191,10 @@ class ProtSeqExplorer(QMainWindow):
             combinations = list(product(selected_embs, selected_dim_reds))
             n_combinations = len(combinations)
 
-            Cols = 3
-            Rows = math.ceil(n_combinations / Cols)
+            cols = 3
+            rows = math.ceil(n_combinations / cols)
             
-            axes = self.figure.subplots(Rows, Cols)
+            axes = self.figure.subplots(rows, cols)
             axes = axes.flatten()
             for i, (emb_name, dim_red_name) in enumerate(combinations):
                 embeddings = np.array(list(map(embs_mapping[emb_name], self.sequences)))   # everytime need calculate the embedding again, maybe need to think of a way to cache
