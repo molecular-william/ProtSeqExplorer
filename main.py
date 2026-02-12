@@ -1,8 +1,23 @@
+from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QCheckBox, QGridLayout, QLineEdit, QListWidget, QComboBox, QFileDialog, QTableWidget, QTableWidgetItem, QMessageBox, QDateEdit, QMainWindow, QTreeView, QHeaderView
+from PyQt6.QtGui import QFont, QPixmap, QStandardItemModel, QStandardItem
+from PyQt6.QtSql import QSqlDatabase, QSqlQuery
+import gc, os, sys, re
+from collections import defaultdict
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+
+import math
+from itertools import product
+from sklearnex.decomposition import PCA
+import numpy as np
+import umap
+
 class ProtSeqExplorer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ProtSeqExplorer v0.0.1")
-        self.resize(800, 600)
+        self.resize(1000, 700)
 
         main_window = QWidget()
 
@@ -28,7 +43,7 @@ class ProtSeqExplorer(QMainWindow):
         self.emb_method_label = QLabel("Embedding Methods:")
         self.emb_method_checkbox = MultiChoiceCheckBox(["EEV", 'ANV'])
         self.dim_red_method_label = QLabel("Dimensionality Reduction Methods:")
-        self.dim_red_method_method_checkbox = MultiChoiceCheckBox(["PCA"])
+        self.dim_red_method_method_checkbox = MultiChoiceCheckBox(["PCA", 'UMAP', "DensMAP"])
 
         #self.emb_button = QPushButton("Embed!")
         #self.plot_buttonn = QPushButton("Plot!")
@@ -54,8 +69,8 @@ class ProtSeqExplorer(QMainWindow):
         
         self.tree_col.addWidget(self.prot_seq_tree)
         self.canvas_col.addWidget(self.canvas)
-        self.row2.addLayout(self.tree_col, 20)
-        self.row2.addLayout(self.canvas_col, 80)
+        self.row2.addLayout(self.tree_col, 15)
+        self.row2.addLayout(self.canvas_col, 85)
 
         
         self.button_col1.addWidget(self.load_seqs_button)
@@ -64,9 +79,9 @@ class ProtSeqExplorer(QMainWindow):
         self.method_labels_col.addWidget(self.dim_red_method_label)
         self.method_checkboxes_col.addWidget(self.emb_method_checkbox)
         self.method_checkboxes_col.addWidget(self.dim_red_method_method_checkbox)
-        self.row3.addLayout(self.button_col1, 20)
+        self.row3.addLayout(self.button_col1, 15)
         self.row3.addLayout(self.method_labels_col, 20)
-        self.row3.addLayout(self.method_checkboxes_col, 60)
+        self.row3.addLayout(self.method_checkboxes_col, 65)
 
         self.row4.addWidget(self.save_button)
         self.row4.addWidget(self.emb_plot_button)
@@ -97,6 +112,8 @@ class ProtSeqExplorer(QMainWindow):
         self.eev = EnergyEntropy_1(data_type='protein')
         self.anv = AANaturalVector()
         self.pca = PCA(n_components=2)
+        self.umap = umap.UMAP(n_components=2, n_jobs=-1, metric='euclidean')
+        self.densmap = umap.UMAP(n_components=2, n_jobs=-1, metric='euclidean', densmap=True)
 
 
     def open_parse_fasta(self):
@@ -177,7 +194,9 @@ class ProtSeqExplorer(QMainWindow):
             'ANV': lambda seq: self.anv.seq2vector(seq),
                 }
         dim_red_mapping = {
-            'PCA': self.pca#.fit_transform(array),
+            'PCA': self.pca,#.fit_transform(array),
+            'UMAP': self.umap,
+            'DensMAP': self.densmap,
                 }
         if selected_embs and selected_dim_reds:
             self.figure.clear()
@@ -221,7 +240,7 @@ class MultiChoiceCheckBox(QWidget):
     def __init__(self, options: list):
         super().__init__()
         assert type(options) == list
-        layout = QVBoxLayout()
+        layout = QHBoxLayout()
 
         self.checkboxes = []
 
