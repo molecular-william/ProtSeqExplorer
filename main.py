@@ -10,11 +10,12 @@ class ProtSeqExplorer(QMainWindow):
         self.prot_plot_label = QLabel("Dimensionality Reduced Plot of Protein Sequence Embeddings")
 
         self.model = QStandardItemModel()  # to show the protein sequences and their names
-        self.model.setHorizontalHeaderLabels(["Name", "Sequence"])
+        self.model.setHorizontalHeaderLabels(["Name", "Sequence", "Label"])
         self.prot_seq_tree = QTreeView()   # maybe use SQL and table later when also considering annotations
         self.prot_seq_tree.setModel(self.model)
         self.prot_seq_tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.prot_seq_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.prot_seq_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.prot_seq_tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.prot_seq_tree.setStyleSheet("QTreeView { border: 2px solid black; }")
 
         
@@ -54,8 +55,8 @@ class ProtSeqExplorer(QMainWindow):
         
         self.tree_col.addWidget(self.prot_seq_tree)
         self.canvas_col.addWidget(self.canvas)
-        self.row2.addLayout(self.tree_col, 15)
-        self.row2.addLayout(self.canvas_col, 85)
+        self.row2.addLayout(self.tree_col, 20)
+        self.row2.addLayout(self.canvas_col, 80)
 
         
         self.button_col1.addWidget(self.load_seqs_button)
@@ -64,9 +65,9 @@ class ProtSeqExplorer(QMainWindow):
         self.method_labels_col.addWidget(self.dim_red_method_label)
         self.method_checkboxes_col.addWidget(self.emb_method_checkbox)
         self.method_checkboxes_col.addWidget(self.dim_red_method_method_checkbox)
-        self.row3.addLayout(self.button_col1, 15)
+        self.row3.addLayout(self.button_col1, 20)
         self.row3.addLayout(self.method_labels_col, 20)
-        self.row3.addLayout(self.method_checkboxes_col, 65)
+        self.row3.addLayout(self.method_checkboxes_col, 60)
 
         self.row4.addWidget(self.save_button)
         self.row4.addWidget(self.emb_plot_button)
@@ -81,7 +82,7 @@ class ProtSeqExplorer(QMainWindow):
         main_window.setLayout(self.master_layout)
         self.setCentralWidget(main_window)
         
-        self.load_seqs_button.clicked.connect(self.open_parse_fasta)
+        self.load_seqs_button.clicked.connect(self.open_parse_file)
         self.process_seqs_button.clicked.connect(self.process_sequences_window)
         self.emb_plot_button.clicked.connect(self.embed_and_plot)
         self.clear_button.clicked.connect(self.clear)
@@ -96,17 +97,40 @@ class ProtSeqExplorer(QMainWindow):
         self.sequences_valid = None
         self.eev = EnergyEntropy_1(data_type='protein')
         self.anv = AANaturalVector()
-        self.pca = PCA(n_components=2)
-        self.umap = umap.UMAP(n_components=2, n_jobs=-1, metric='euclidean')
-        self.densmap = umap.UMAP(n_components=2, n_jobs=-1, metric='euclidean', densmap=True)
-        self.tsne = TSNE(n_components=2)
+        self.pca = PCA(n_components=2, svd_solver='covariance_eigh', n_jobs=2)
+        self.umap = umap.UMAP(n_components=2, n_jobs=4, metric='euclidean')
+        self.densmap = umap.UMAP(n_components=2, n_jobs=4, metric='euclidean', densmap=True)
+        self.tsne = TSNE(n_components=2, n_jobs=2)
 
 
-    def open_parse_fasta(self):
-        self.sequences = []
+    def open_parse_file(self):
+        self.sequences = []   # all info cleared when the button is pressed, may need to put this after the filedialog
         self.sequence_names = []
+        self.sequence_labels = []
         
-        fasta_file_path, _ = QFileDialog.getOpenFileName(filter="Fasta files (*.fasta)")
+        file_path, _ = QFileDialog.getOpenFileName(filter="Accepted file formats (*.fasta *.csv *.tsv)")
+
+        if file_path.endswith(".fasta"):
+            self.model.clear()
+            self.model.setHorizontalHeaderLabels(["Name", "Sequence", "Label"])
+            self.parse_fasta(file_path)
+        elif file_path.endswith("sv"):
+            self.model.clear()
+            self.model.setHorizontalHeaderLabels(["Name", "Sequence", "Label"])
+            self.parse_csv(file_path)
+        else:
+            return
+
+        self.check_sequence_validity()
+        self.change_tree_border_color()
+
+        self.process_seqs_button.setEnabled(True)
+        self.save_button.setEnabled(True)
+        self.emb_plot_button.setEnabled(True)
+        self.clear_button.setEnabled(True)
+
+    
+    def parse_fasta(self, fasta_file_path):
         with open(fasta_file_path, 'r') as f:
             fasta_content = f.read()
             
@@ -123,16 +147,59 @@ class ProtSeqExplorer(QMainWindow):
 
             seq_name = QStandardItem(str(header))
             seq_show = QStandardItem(f'{seq.replace('\n', '')[:10]}...')  # only show the first 10 residues
-            self.model.appendRow([seq_name, seq_show])
+            self.model.appendRow([seq_name, seq_show, QStandardItem("")])  # no label
 
-        self.check_sequence_validity()
-        self.change_tree_border_color()
 
-        self.process_seqs_button.setEnabled(True)
-        self.save_button.setEnabled(True)
-        self.emb_plot_button.setEnabled(True)
-        self.clear_button.setEnabled(True)
+    def parse_csv(self, file_path):
+        if file_path.endswith(".csv"):
+            delimiter=','
+        else:
+            delimiter = '\t'
+        with open(file_path, newline='') as file:
+            reader = csv.DictReader(file, delimiter=delimiter)
+            col_names = list(next(reader).keys())
+            # choose the sequence column, name column, label column
+            first_two_rows = []  # get the first two rows
+            for j, row in enumerate(reader):
+                if j < 2:
+                    first_two_rows.append(list(row.values()))
+                else:
+                    break
 
+            # get no. of unique values per column
+            unqiue_values_per_column = [0] * len(col_names)
+            for row in reader:
+                
+                    
+            self.csv_tsv_col_choice(col_names, first_two_rows)
+
+            if self.seq_col:  # a choice was made
+                for i, row in enumerate(reader):
+                    seq = row[self.seq_col].strip()
+                    self.sequences.append(seq)
+                    
+                    if self.seq_name_col == 'Use index as name':
+                        seq_name = i
+                        self.sequence_names.append(seq_name)
+                    else:
+                        seq_name = row[self.seq_name_col]
+                        self.sequence_names.append(row[self.seq_name_col])
+                        
+                    if self.seq_label_col == 'No labels':
+                        seq_label = ''
+                        self.sequence_labels.append(seq_label)
+                    else:
+                        seq_label = row[self.seq_label_col]
+                        self.sequence_labels.append(row[self.seq_label_col])
+                    
+                    self.model.appendRow([QStandardItem(seq_name), 
+                                          QStandardItem(f'{seq[:10]}...'), 
+                                          QStandardItem(f'{seq_label[:15]}...')])  # show first 15
+            else:
+                return
+                    
+
+            
     def check_sequence_validity(self):
         bad_residues = set('XBZUO')
         for seq in self.sequences:
@@ -141,12 +208,14 @@ class ProtSeqExplorer(QMainWindow):
                 break
         self.sequences_valid = True
 
+        
     def change_tree_border_color(self):
         if self.sequences_valid:
             self.prot_seq_tree.setStyleSheet("QTreeView { border: 2px solid green; }")
         else:
             self.prot_seq_tree.setStyleSheet("QTreeView { border: 2px solid red; }")
 
+            
     def process_sequences_window(self):
         # no functionality yet
         msgBox = QMessageBox(self)
@@ -171,6 +240,58 @@ class ProtSeqExplorer(QMainWindow):
                 print("OK clicked and checkbox was not checked.")
         elif ret == QMessageBox.StandardButton.Cancel:
             print("Cancel clicked.")
+
+    def csv_tsv_col_choice(self, columns: list, first_two_rows):  # chooses sequence col, sequence name col, sequence label col from CSV/TSV
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Parse CSV/TSV file")
+        layout = QVBoxLayout(dialog)
+        
+        sneakpeak = QHBoxLayout()  # first two roles of the csv/tsv file with header
+        model = QStandardItemModel()  # to show the protein sequences and their names
+        sneakpeak_tree = QTreeView()
+        sneakpeak_tree.setModel(model)
+        model.setHorizontalHeaderLabels(columns)
+        model.appendRow([QStandardItem(item) for item in first_two_rows[0]])
+        model.appendRow([QStandardItem(item) for item in first_two_rows[1]])
+        sneakpeak.addWidget(sneakpeak_tree)
+
+        # number of unique values for each column
+        
+        hbox = QHBoxLayout()
+        col1 = QVBoxLayout()
+        col2 = QVBoxLayout()
+        col1.addWidget(QLabel('Sequence Column:'))
+        col1.addWidget(QLabel('Sequence Name Column:'))
+        col1.addWidget(QLabel('Sequence Label Column:'))
+        self.seq_col_ComboBox = QComboBox()
+        self.seq_col_ComboBox.addItems(columns)
+        col2.addWidget(self.seq_col_ComboBox)
+        self.seq_name_ComboBox = QComboBox()
+        self.seq_name_ComboBox.addItems(['Use index as name'] + columns)
+        col2.addWidget(self.seq_name_ComboBox)
+        self.seq_label_ComboBox = QComboBox()
+        self.seq_label_ComboBox.addItems(['No labels'] + columns)
+        col2.addWidget(self.seq_label_ComboBox)
+
+        hbox.addLayout(col1)
+        hbox.addLayout(col2)
+        layout.addLayout(sneakpeak)
+        layout.addLayout(hbox)
+        
+        # Add OK / Cancel buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.seq_col = self.seq_col_ComboBox.currentText()
+            self.seq_name_col = self.seq_name_ComboBox.currentText()
+            self.seq_label_col = self.seq_label_ComboBox.currentText()
+
+        else:
+            self.seq_col, self.seq_name_col, self.seq_label_col = '', '', ''
+        
 
     def embed_and_plot(self):
         selected_embs = self.emb_method_checkbox.get_selected_values()  # list
